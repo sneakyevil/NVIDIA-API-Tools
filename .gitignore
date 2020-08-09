@@ -8,4 +8,5 @@
 *.exe
 *.ilk
 *.idb
+*.ipdb
 *.txt
