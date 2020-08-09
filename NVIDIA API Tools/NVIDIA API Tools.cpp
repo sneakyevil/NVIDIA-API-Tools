@@ -50,7 +50,7 @@ std::string HWND2EXE(HWND hInput)
 void SetDVCLevel(int iLevel)
 {
     static int iOldLevel = -1;
-    if (iLevel == iOldLevel) return;
+    if (iLevel == iOldLevel) return; 
     iOldLevel = iLevel;
     (*nGlobal::nAPI::SetDVCLevel)(nGlobal::nAPI::iHandle, 0, static_cast<int>(iLevel * 1.26)); // Since 63 is 100% vibrance and we have settings between 0 - 50 this is "perfect" math for that.
 }
@@ -82,7 +82,7 @@ void WorkingWindow()
             }
             SetDVCLevel(TempSettings.iVibrance);
         }
-        Sleep(5000); // Minimalize cpu usage.
+        Sleep(1000); // Minimalize cpu usage.
     }
 }
 
@@ -145,7 +145,7 @@ int main()
             {
                 CSettings* NewSettings = new CSettings;
                 GetSettings(NewSettings->sName, jData, iCount, "name");
-                GetSettings(NewSettings->iVibrance, jData, iCount, "vibrance");
+                NewSettings->iVibrance = -1; GetSettings(NewSettings->iVibrance, jData, iCount, "vibrance");
                 if (NewSettings->iVibrance != -1) NewSettings->iVibrance = std::clamp(NewSettings->iVibrance, 0, 50);
                 nGlobal::vSettings.push_back(NewSettings);
                 iCount++;

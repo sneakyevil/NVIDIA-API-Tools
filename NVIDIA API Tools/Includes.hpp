@@ -33,7 +33,7 @@ class CSettings
 {
 public:
     std::string sName;
-    int iVibrance = -1;
+    int iVibrance;
 };
 
 namespace nGlobal
