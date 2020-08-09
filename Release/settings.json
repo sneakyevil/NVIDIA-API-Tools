@@ -1,9 +1,9 @@
 {
-  "Settings": 
+  "Settings":
   [
     {
-      "name": "csgo",
-	  "vibrance": 45
+        "name": "csgo",
+        "vibrance": 45
     }
   ]
 }

@@ -5,6 +5,7 @@ void ToggleConsoleVisibility()
 {
     static bool bHidden;
     ShowWindow(nGlobal::hWindowConsole, bHidden);
+    if (bHidden) ShowWindow(nGlobal::hWindowConsole, SW_RESTORE); // Show over everything when unhidding.
     bHidden = !bHidden;
 }
 
@@ -102,6 +103,160 @@ void PrintfColor(WORD wColor, const char* pFormat, ...)
     printf(cTemp);
 }
 
+const char* cRegistryRunPath = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+bool bStartupRegistered()
+{
+    bool bExist = false;
+    HKEY hTemp = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, cRegistryRunPath, 0, KEY_READ, &hTemp) == ERROR_SUCCESS)
+    {
+        DWORD dType, dData;
+        bExist = RegQueryValueExA(hTemp, cConsole, 0, &dType, 0, &dData) == ERROR_SUCCESS;
+        RegCloseKey(hTemp);
+    }
+    return bExist;
+}
+
+void StartupRegisterToggle()
+{
+    HKEY hTemp = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, cRegistryRunPath, 0, KEY_ALL_ACCESS, &hTemp) == ERROR_SUCCESS)
+    {
+        if (bStartupRegistered()) RegDeleteValueA(hTemp, cConsole);
+        else
+        {
+            char cCurrentFileName[MAX_PATH];
+            GetModuleFileNameA(0, cCurrentFileName, MAX_PATH);
+            RegSetValueExA(hTemp, cConsole, 0, REG_SZ, (unsigned char*)cCurrentFileName, strlen(cCurrentFileName));
+        }
+        RegCloseKey(hTemp);
+    }
+}
+
+void SaveSettings() // clean output
+{
+    std::ofstream oFile("settings.json");
+    if (oFile.is_open())
+    {
+        size_t sSize = nGlobal::vSettings.size();
+        size_t sCount = 1;
+        oFile << "{\n";
+        oFile << "  \"Settings\":\n";
+        oFile << "  [\n";
+        if (sSize > 0)
+        {
+            for (CSettings* SettingsInfo : nGlobal::vSettings)
+            {
+                oFile << "    {\n";
+                oFile << "        \"name\": \"" + SettingsInfo->sName + "\",\n";
+                oFile << "        \"vibrance\": " + std::to_string(SettingsInfo->iVibrance) + "\n";
+                if (sCount == sSize) oFile << "    }\n";
+                else oFile << "    },\n";
+                sCount++;
+            }
+        }
+        oFile << "  ]\n";
+        oFile << "}";
+        oFile.close();
+    }
+}
+
+void ClearConsole() // very big func
+{
+    system("cls"); // system func uh.
+}
+
+void CommandLine()
+{
+    bool bBreak = false;
+    while (1)
+    {
+        ClearConsole();
+        PrintfColor(RED, "[*] Go Back\n");
+        PrintfColor(WHITE, "[0.] Toggle Startup [Status: ");
+        if (bStartupRegistered()) PrintfColor(GREEN, "ON");
+        else PrintfColor(RED, "OFF");
+        PrintfColor(WHITE, "]\n[1.] Add Settings\n");
+        PrintfColor(WHITE, "[2.] Remove Settings\n\n");
+        PrintfColor(YELLOW, "Press key to choice.");
+        switch (_getch())
+        {
+            case '0':
+            {
+                StartupRegisterToggle();
+            }
+            break;
+            case '1':
+            {
+                ClearConsole();
+                PrintfColor(WHITE, "[*] Add Settings:\n\n");
+
+                CSettings* NewSettings = new CSettings;
+                PrintfColor(YELLOW, "Process Name:"); PrintfColor(WHITE, " ");
+                std::cin >> NewSettings->sName;
+                PrintfColor(YELLOW, "Vibrance (-1 [OFF] | 0 - 50):"); PrintfColor(WHITE, " ");
+                std::cin >> NewSettings->iVibrance;
+                if (NewSettings->iVibrance != -1) NewSettings->iVibrance = std::clamp(NewSettings->iVibrance, 0, 50);
+                nGlobal::vSettings.push_back(NewSettings);
+                SaveSettings();
+                MessageBoxA(0, std::string("Added new settings for: " + NewSettings->sName).c_str(), cConsole, MB_OK | MB_ICONASTERISK);
+            }
+            break;
+            case '2':
+            {
+                ClearConsole();
+                PrintfColor(WHITE, "[*] Remove Settings:\n\n");
+
+                std::string sName;
+                PrintfColor(YELLOW, "Process Name:"); PrintfColor(WHITE, " ");
+                std::cin >> sName;
+                bool bFound = false;
+                int iCount = 0;
+                for (CSettings* SettingsInfo : nGlobal::vSettings)
+                {
+                    if (SettingsInfo->sName.find(sName) != std::string::npos)
+                    {
+                        sName = SettingsInfo->sName;
+                        bFound = true;
+                        nGlobal::vSettings.erase(nGlobal::vSettings.begin() + iCount);
+                        SaveSettings();
+                        MessageBoxA(0, std::string("Removed settings for: " + sName).c_str(), cConsole, MB_OK | MB_ICONASTERISK);
+                        break;
+                    }
+                    iCount++;
+                }
+                if (!bFound) MessageBoxA(0, std::string("Couldn't find settings with name: " + sName).c_str(), cConsole, MB_OK | MB_ICONERROR);
+            }
+            break;
+            default:
+            {
+                bBreak = true;
+            }
+            break;
+        }
+        if (bBreak) break;
+    }
+}
+
+void PrintCurrentSettings()
+{
+    ClearConsole();
+    PrintfColor(WHITE, "[*] Loaded Settings:");
+    if (nGlobal::vSettings.empty())  PrintfColor(RED, "\n\n[-] Settings are empty or broken json?");
+    else
+    {
+        for (CSettings* SettingsInfo : nGlobal::vSettings)
+        {
+            PrintfColor(GREEN, "\n\n[+] ");
+            PrintfColor(WHITE, "%s:\n", SettingsInfo->sName.c_str());
+            if (SettingsInfo->iVibrance >= 0) PrintfColor(GREEN, "    [+] Vibrance: %i", SettingsInfo->iVibrance);
+        }
+    }
+
+    PrintfColor(YELLOW, "\n\n[*] Press \'c\' to use command line.");
+    if (_getch() == 'c') CommandLine();
+}
+
 int main()
 {
     CreateEventA(0, 0, 0, "NVAPIT00LS");
@@ -154,19 +309,6 @@ int main()
         iFile.close();
     }
    
-    PrintfColor(WHITE, "[*] Loaded Settings:");
-    if (nGlobal::vSettings.empty())  PrintfColor(RED, "\n\n[-] Settings are empty or broken json?");
-    else
-    {
-        for (CSettings* SettingsInfo : nGlobal::vSettings)
-        {
-            printf("\n\n");
-            PrintfColor(GREEN, "[+] ");
-            PrintfColor(WHITE, "%s:\n", SettingsInfo->sName.c_str());
-            if (SettingsInfo->iVibrance >= 0) PrintfColor(GREEN, "    [+] Vibrance: %i", SettingsInfo->iVibrance);
-        }
-    }
-
     // Very bad codenz.
     nGlobal::nAPI::QueryInterface = tNVAPI_QueryInterface(GetProcAddress(nGlobal::nAPI::hMod, "nvapi_QueryInterface"));
     (*tNVAPI_EnumNvidiaDisplayHandle_t((*nGlobal::nAPI::QueryInterface)(0x9ABDD40D)))(0, &nGlobal::nAPI::iHandle); // Hardcoded monitor index 0, so better make loop.
@@ -175,6 +317,6 @@ int main()
     (*tNVAPI_GetDVCInfo((*nGlobal::nAPI::QueryInterface)(0x4085DE45)))(nGlobal::nAPI::iHandle, 0, &nGlobal::nAPI::nInfo);
 
     std::thread tWorkingWindow(WorkingWindow);
-    tWorkingWindow.join();
+    while (1) PrintCurrentSettings();
     return 0;
 }

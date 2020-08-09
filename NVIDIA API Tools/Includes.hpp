@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <conio.h>
 #include <Windows.h>
 #include <tlhelp32.h>
 #include <Psapi.h>
