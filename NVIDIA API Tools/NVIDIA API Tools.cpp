@@ -331,6 +331,10 @@ int main()
     // Very bad codenz.
     nGlobal::nAPI::QueryInterface = tNVAPI_QueryInterface(GetProcAddress(nGlobal::nAPI::hMod, "nvapi_QueryInterface"));
     (*tNVAPI_EnumNvidiaDisplayHandle_t((*nGlobal::nAPI::QueryInterface)(0x9ABDD40D)))(0, &nGlobal::nAPI::iHandle); // Hardcoded monitor index 0, so better make loop.
+    // nvapi.dll Sig: 55 8B EC 83 EC 14 A1 ? ? ? ? 3D ? ? ? ? 74 24 F6 40 1C 20 74 1E 80 78 19 04 72 18 68 ? ? ? ? 68 ? ? ? ? FF 70 14 FF 70 10 E8 ? ? ? ? 83 C4 10 6A 00 E8 ? ? ? ? 83 C4 04 84 C0 75 09 B8 ? ? ? ? 8B E5 5D C3 57
+    // First: GetDVCInfo
+    // Second SetDVCLevel
+    // OP Codes: [30 5D 0D 10] -> [sub_address] (B4 09 24 17) -> (0x172409B4)
     nGlobal::nAPI::SetDVCLevel = tNVAPI_SetDVCLevel((*nGlobal::nAPI::QueryInterface)(0x172409B4));
     nGlobal::nAPI::nInfo.version = sizeof(NV_DISPLAY_DVC_INFO) | 0x10000;
     (*tNVAPI_GetDVCInfo((*nGlobal::nAPI::QueryInterface)(0x4085DE45)))(nGlobal::nAPI::iHandle, 0, &nGlobal::nAPI::nInfo);
