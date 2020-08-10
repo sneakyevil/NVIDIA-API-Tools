@@ -12,23 +12,8 @@ void ToggleConsoleVisibility()
         SetFocus(nGlobal::hWindowConsole);
         SetActiveWindow(nGlobal::hWindowConsole);
     }
-    SetPriorityClass(GetCurrentProcess(), bHidden ? NORMAL_PRIORITY_CLASS : PROCESS_MODE_BACKGROUND_BEGIN);
+    SetPriorityClass(GetCurrentProcess(), bHidden ? NORMAL_PRIORITY_CLASS : IDLE_PRIORITY_CLASS);
     bHidden = !bHidden;
-}
-
-void ConsoleHotkey()
-{
-    RegisterHotKey(0, 1, MOD_ALT | MOD_NOREPEAT, VK_F2);
-
-    while (1)
-    {
-        MSG msg = { 0 };
-        while (GetMessageA(&msg, 0, 0, 0) != 0)
-        {
-            if (msg.message == WM_HOTKEY) ToggleConsoleVisibility();
-        }
-        Sleep(1000);
-    }
 }
 
 std::string HWND2EXE(HWND hInput)
@@ -61,37 +46,6 @@ void SetDVCLevel(int iLevel)
     if (iLevel == iOldLevel) return; 
     iOldLevel = iLevel;
     (*nGlobal::nAPI::SetDVCLevel)(nGlobal::nAPI::iHandle, 0, static_cast<int>(iLevel * 1.26)); // Since 63 is 100% vibrance and we have settings between 0 - 50 this is "perfect" math for that.
-}
-
-void WorkingWindow()
-{
-    HWND hCurrentWindow = nullptr;
-    HWND hCurrentCheckWindow;
-    std::string sWindowName;
-    while (1)
-    {
-        hCurrentCheckWindow = GetForegroundWindow();
-        if (hCurrentWindow != hCurrentCheckWindow)
-        {
-            hCurrentWindow = hCurrentCheckWindow;
-            sWindowName = HWND2EXE(hCurrentWindow);
-            CSettings TempSettings;
-            TempSettings.iVibrance = 0;
-            if (!nGlobal::vSettings.empty())
-            {
-                for (CSettings* SettingsInfo : nGlobal::vSettings)
-                {
-                    if (sWindowName.find(SettingsInfo->sName) != std::string::npos)
-                    {
-                        TempSettings = *SettingsInfo;
-                        break;
-                    }
-                }
-            }
-            SetDVCLevel(TempSettings.iVibrance);
-        }
-        Sleep(1000); // Minimalize cpu usage.
-    }
 }
 
 #define GREEN   10
@@ -275,6 +229,43 @@ void SetWorkingDirectory()
     SetCurrentDirectoryA(sTemp.c_str());
 }
 
+void __stdcall WinEventProc(HWINEVENTHOOK hWinEventHook, DWORD dwEvent, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
+{
+    if (dwEvent != EVENT_SYSTEM_FOREGROUND) return; // Probably not needed but just in case.
+
+    static HWND hCurrentWindow = nullptr;
+    if (hCurrentWindow == hwnd) return;
+    hCurrentWindow = hwnd;
+
+    CSettings TempSettings;
+    if (!nGlobal::vSettings.empty())
+    {
+        static std::string sWindowName; sWindowName = HWND2EXE(hCurrentWindow);
+        for (CSettings* SettingsInfo : nGlobal::vSettings)
+        {
+            if (sWindowName.find(SettingsInfo->sName) != std::string::npos)
+            {
+                TempSettings = *SettingsInfo;
+                break;
+            }
+        }
+    }
+    SetDVCLevel(TempSettings.iVibrance);
+}
+
+void WorkingThread()
+{
+    RegisterHotKey(0, 1, MOD_ALT | MOD_NOREPEAT, VK_F2);
+    SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+    MSG msg;
+    while (GetMessageA(&msg, 0, 0, 0))
+    {
+        if (msg.message == WM_HOTKEY && msg.wParam == 1) ToggleConsoleVisibility();
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+}
+
 int main()
 {
     CreateEventA(0, 0, 0, "NVAPIT00LS");
@@ -287,10 +278,8 @@ int main()
     AllocConsole();
     SetConsoleTitleA(cConsole);
     nGlobal::hOutputConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    nGlobal::hWindowConsole = FindWindowA(0, cConsole);
+    while (!nGlobal::hWindowConsole) nGlobal::hWindowConsole = FindWindowA(0, cConsole); // 0.01% Chance it fail just in case.
     ToggleConsoleVisibility();
-
-    std::thread tConsoleHotkey(ConsoleHotkey);
 
     nGlobal::nAPI::hMod = LoadLibraryA("nvapi.dll");
     if (!nGlobal::nAPI::hMod)
@@ -339,7 +328,7 @@ int main()
     nGlobal::nAPI::nInfo.version = sizeof(NV_DISPLAY_DVC_INFO) | 0x10000;
     (*tNVAPI_GetDVCInfo((*nGlobal::nAPI::QueryInterface)(0x4085DE45)))(nGlobal::nAPI::iHandle, 0, &nGlobal::nAPI::nInfo);
 
-    std::thread tWorkingWindow(WorkingWindow);
+    std::thread tWorkingThread(WorkingThread);
     while (1) PrintCurrentSettings();
     return 0;
 }
