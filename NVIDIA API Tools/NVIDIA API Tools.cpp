@@ -5,7 +5,14 @@ void ToggleConsoleVisibility()
 {
     static bool bHidden;
     ShowWindow(nGlobal::hWindowConsole, bHidden);
-    if (bHidden) ShowWindow(nGlobal::hWindowConsole, SW_RESTORE); // Show over everything when unhidding.
+    if (bHidden)
+    {
+        ShowWindow(nGlobal::hWindowConsole, SW_RESTORE);
+        SetForegroundWindow(nGlobal::hWindowConsole);
+        SetFocus(nGlobal::hWindowConsole);
+        SetActiveWindow(nGlobal::hWindowConsole);
+    }
+    SetPriorityClass(GetCurrentProcess(), bHidden ? NORMAL_PRIORITY_CLASS : PROCESS_MODE_BACKGROUND_BEGIN);
     bHidden = !bHidden;
 }
 
@@ -103,12 +110,13 @@ void PrintfColor(WORD wColor, const char* pFormat, ...)
     printf(cTemp);
 }
 
+/* Most ugly registry functions. */
 const char* cRegistryRunPath = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
 bool bStartupRegistered()
 {
     bool bExist = false;
     HKEY hTemp = nullptr;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, cRegistryRunPath, 0, KEY_READ, &hTemp) == ERROR_SUCCESS)
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, cRegistryRunPath, 0, KEY_READ, &hTemp) == ERROR_SUCCESS)
     {
         DWORD dType, dData;
         bExist = RegQueryValueExA(hTemp, cConsole, 0, &dType, 0, &dData) == ERROR_SUCCESS;
@@ -120,7 +128,7 @@ bool bStartupRegistered()
 void StartupRegisterToggle()
 {
     HKEY hTemp = nullptr;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, cRegistryRunPath, 0, KEY_ALL_ACCESS, &hTemp) == ERROR_SUCCESS)
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, cRegistryRunPath, 0, KEY_ALL_ACCESS, &hTemp) == ERROR_SUCCESS)
     {
         if (bStartupRegistered()) RegDeleteValueA(hTemp, cConsole);
         else
@@ -132,6 +140,7 @@ void StartupRegisterToggle()
         RegCloseKey(hTemp);
     }
 }
+/**/
 
 void SaveSettings() // clean output
 {
@@ -257,6 +266,15 @@ void PrintCurrentSettings()
     if (_getch() == 'c') CommandLine();
 }
 
+void SetWorkingDirectory()
+{
+    char cCurrentFileName[MAX_PATH];
+    GetModuleFileNameA(0, cCurrentFileName, MAX_PATH);
+    std::string sTemp = cCurrentFileName;
+    sTemp = sTemp.substr(0, sTemp.find_last_of("\\/"));
+    SetCurrentDirectoryA(sTemp.c_str());
+}
+
 int main()
 {
     CreateEventA(0, 0, 0, "NVAPIT00LS");
@@ -265,6 +283,7 @@ int main()
         MessageBoxA(0, "Application is already running!", cConsole, MB_OK | MB_ICONERROR);
         return 0;
     }
+    SetWorkingDirectory();
     AllocConsole();
     SetConsoleTitleA(cConsole);
     nGlobal::hOutputConsole = GetStdHandle(STD_OUTPUT_HANDLE);
