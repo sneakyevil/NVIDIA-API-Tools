@@ -238,6 +238,7 @@ void __stdcall WinEventProc(HWINEVENTHOOK hWinEventHook, DWORD dwEvent, HWND hwn
     hCurrentWindow = hwnd;
 
     CSettings TempSettings;
+    TempSettings.iVibrance = nGlobal::nAPI::nInfo.currentLevel;
     if (!nGlobal::vSettings.empty())
     {
         static std::string sWindowName; sWindowName = HWND2EXE(hCurrentWindow);
@@ -328,6 +329,12 @@ int main()
     nGlobal::nAPI::nInfo.version = sizeof(NV_DISPLAY_DVC_INFO) | 0x10000;
     (*tNVAPI_GetDVCInfo((*nGlobal::nAPI::QueryInterface)(0x4085DE45)))(nGlobal::nAPI::iHandle, 0, &nGlobal::nAPI::nInfo);
 
+    unsigned int iThreads = std::thread::hardware_concurrency();
+    if (iThreads > 1)
+    {
+        DWORD dMask = DWORD(1 << (iThreads - 1));
+        SetProcessAffinityMask(GetCurrentProcess(), dMask);
+    }
     std::thread tWorkingThread(WorkingThread);
     while (1) PrintCurrentSettings();
     return 0;
