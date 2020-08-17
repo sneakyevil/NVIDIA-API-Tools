@@ -4,6 +4,7 @@
 
 ## Supported Options
 
+- Affinity
 - Vibrance
 
 ## TODO
