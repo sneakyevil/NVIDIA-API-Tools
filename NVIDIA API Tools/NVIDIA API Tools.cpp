@@ -16,10 +16,8 @@ void ToggleConsoleVisibility()
     bHidden = !bHidden;
 }
 
-std::string HWND2EXE(HWND hInput)
+std::string PID2String(DWORD dPID)
 {
-    static DWORD dPID;
-    GetWindowThreadProcessId(hInput, &dPID);
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnap != INVALID_HANDLE_VALUE)
     {
@@ -112,6 +110,7 @@ void SaveSettings() // clean output
             {
                 oFile << "    {\n";
                 oFile << "        \"name\": \"" + SettingsInfo->sName + "\",\n";
+                oFile << "        \"affinity\": " + std::to_string(SettingsInfo->dAffinity) + ",\n";
                 oFile << "        \"vibrance\": " + std::to_string(SettingsInfo->iVibrance) + "\n";
                 if (sCount == sSize) oFile << "    }\n";
                 else oFile << "    },\n";
@@ -127,6 +126,13 @@ void SaveSettings() // clean output
 void ClearConsole() // very big func
 {
     system("cls"); // system func uh.
+}
+
+bool QuestionChar()
+{
+    bool IsYes = _getch() == 'y';
+    PrintfColor(WHITE, IsYes ? "Y" : "N");
+    return IsYes;
 }
 
 void CommandLine()
@@ -157,7 +163,18 @@ void CommandLine()
                 CSettings* NewSettings = new CSettings;
                 PrintfColor(YELLOW, "Process Name:"); PrintfColor(WHITE, " ");
                 std::cin >> NewSettings->sName;
-                PrintfColor(YELLOW, "Vibrance (-1 [OFF] | 0 - 50):"); PrintfColor(WHITE, " ");
+                PrintfColor(YELLOW, "Affinity (Y/N):"); PrintfColor(WHITE, " ");
+                if (QuestionChar())
+                {
+                    unsigned char uThreads = 0;
+                    while (uThreads != nGlobal::uThreads)
+                    {
+                        PrintfColor(YELLOW, "\nCPU %i (Y/N):", uThreads); PrintfColor(WHITE, " ");
+                        if (QuestionChar()) NewSettings->dAffinity += 1 << uThreads;
+                        uThreads++;
+                    }
+                }
+                PrintfColor(YELLOW, "\nVibrance (-1 [OFF] | 0 - 50):"); PrintfColor(WHITE, " ");
                 std::cin >> NewSettings->iVibrance;
                 if (NewSettings->iVibrance != -1) NewSettings->iVibrance = std::clamp(NewSettings->iVibrance, 0, 50);
                 nGlobal::vSettings.push_back(NewSettings);
@@ -212,6 +229,7 @@ void PrintCurrentSettings()
         {
             PrintfColor(GREEN, "\n\n[+] ");
             PrintfColor(WHITE, "%s:\n", SettingsInfo->sName.c_str());
+            if (SettingsInfo->dAffinity > 0) PrintfColor(GREEN, "    [+] Affinity: %i\n", SettingsInfo->dAffinity);
             if (SettingsInfo->iVibrance >= 0) PrintfColor(GREEN, "    [+] Vibrance: %i", SettingsInfo->iVibrance);
         }
     }
@@ -229,29 +247,44 @@ void SetWorkingDirectory()
     SetCurrentDirectoryA(sTemp.c_str());
 }
 
+HANDLE hCustomOpenProcess(DWORD dLastPID, DWORD dPID, DWORD dAccess)
+{
+    if (dLastPID == dPID) return 0; // Bad idea...
+    return OpenProcess(dAccess, 0, dPID);
+}
+
 void __stdcall WinEventProc(HWINEVENTHOOK hWinEventHook, DWORD dwEvent, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
 {
     if (dwEvent != EVENT_SYSTEM_FOREGROUND) return; // Probably not needed but just in case.
 
     static HWND hCurrentWindow = nullptr;
     if (hCurrentWindow == hwnd) return;
+    static DWORD dPID;
     hCurrentWindow = hwnd;
+    GetWindowThreadProcessId(hCurrentWindow, &dPID);
 
-    CSettings TempSettings;
-    TempSettings.iVibrance = nGlobal::nAPI::nInfo.currentLevel;
     if (!nGlobal::vSettings.empty())
     {
-        static std::string sWindowName; sWindowName = HWND2EXE(hCurrentWindow);
+        static std::string sWindowName; sWindowName = PID2String(dPID);
         for (CSettings* SettingsInfo : nGlobal::vSettings)
         {
             if (sWindowName.find(SettingsInfo->sName) != std::string::npos)
             {
-                TempSettings = *SettingsInfo;
-                break;
+                if (SettingsInfo->dAffinity > 0)
+                {
+                    HANDLE hAffinity = hCustomOpenProcess(SettingsInfo->dPID, dPID, PROCESS_SET_INFORMATION);
+                    if (hAffinity)
+                    {
+                        SetProcessAffinityMask(hAffinity, SettingsInfo->dAffinity);
+                        CloseHandle(hAffinity);
+                    }
+                }
+                SettingsInfo->dPID = dPID;
+                return;
             }
         }
     }
-    SetDVCLevel(TempSettings.iVibrance);
+    SetDVCLevel(nGlobal::nAPI::nInfo.currentLevel);
 }
 
 void WorkingThread()
@@ -309,6 +342,7 @@ int main()
             {
                 CSettings* NewSettings = new CSettings;
                 GetSettings(NewSettings->sName, jData, iCount, "name");
+                GetSettings(NewSettings->dAffinity, jData, iCount, "affinity");
                 NewSettings->iVibrance = -1; GetSettings(NewSettings->iVibrance, jData, iCount, "vibrance");
                 if (NewSettings->iVibrance != -1) NewSettings->iVibrance = std::clamp(NewSettings->iVibrance, 0, 50);
                 nGlobal::vSettings.push_back(NewSettings);
@@ -329,10 +363,10 @@ int main()
     nGlobal::nAPI::nInfo.version = sizeof(NV_DISPLAY_DVC_INFO) | 0x10000;
     (*tNVAPI_GetDVCInfo((*nGlobal::nAPI::QueryInterface)(0x4085DE45)))(nGlobal::nAPI::iHandle, 0, &nGlobal::nAPI::nInfo);
 
-    unsigned int iThreads = std::thread::hardware_concurrency();
-    if (iThreads > 1)
+    nGlobal::uThreads = std::thread::hardware_concurrency();
+    if (nGlobal::uThreads > 1)
     {
-        DWORD dMask = DWORD(1 << (iThreads - 1));
+        DWORD dMask = DWORD(1 << (nGlobal::uThreads - 1));
         SetProcessAffinityMask(GetCurrentProcess(), dMask);
     }
     std::thread tWorkingThread(WorkingThread);

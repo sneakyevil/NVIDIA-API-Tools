@@ -14,5 +14,6 @@ namespace nGlobal
 
     HANDLE hOutputConsole;
     HWND hWindowConsole;
+    unsigned char uThreads;
     std::vector<CSettings*> vSettings;
 }

@@ -3,6 +3,7 @@
   [
     {
         "name": "csgo",
+        "affinity": 14,
         "vibrance": 45
     }
   ]

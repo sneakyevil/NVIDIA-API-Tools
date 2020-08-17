@@ -33,7 +33,10 @@ typedef int (*tNVAPI_SetDVCLevel)(int handle, int outputId, int level);
 class CSettings
 {
 public:
+    DWORD dPID;
+
     std::string sName;
+    DWORD dAffinity;
     int iVibrance;
 };
 
@@ -51,5 +54,6 @@ namespace nGlobal
 
     extern HANDLE hOutputConsole;
     extern HWND hWindowConsole;
+    extern unsigned char uThreads;
     extern std::vector<CSettings*> vSettings;
 }
